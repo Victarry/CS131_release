@@ -29,7 +29,18 @@ def conv_nested(image, kernel):
     out = np.zeros((Hi, Wi))
 
     ### YOUR CODE HERE
-    pass
+    for xi in range(Hi):
+        for xj in range(Wi):
+            for ki in range(-Hk//2+1, Hk//2+1):
+                for kj in range(-Wk//2+1, Wk//2+1):
+                    # ki = ki - Hk // 2
+                    # kj = kj - Wk // 2
+                    if 0 <= xi - ki < Hi and 0 <= xj - kj < Wi:
+                        x = image[xi-ki, xj-kj]
+                    else:
+                        x = 0
+                    y = kernel[ki+Hk//2, kj+Wk//2]
+                    out[xi, xj] += x*y
     ### END YOUR CODE
 
     return out
@@ -56,7 +67,8 @@ def zero_pad(image, pad_height, pad_width):
     out = None
 
     ### YOUR CODE HERE
-    pass
+    out = np.zeros((H+2*pad_height, W+2*pad_width))
+    out[pad_height:pad_height+H, pad_width:pad_width+W] = image
     ### END YOUR CODE
     return out
 
@@ -83,11 +95,17 @@ def conv_fast(image, kernel):
     Hi, Wi = image.shape
     Hk, Wk = kernel.shape
     out = np.zeros((Hi, Wi))
-
+    
+    a = Hk // 2
+    b = Wk // 2
+    padded_image = zero_pad(image, a, b)
+    kernel = np.flip(kernel, axis=(0, 1))
     ### YOUR CODE HERE
-    pass
+    for xi in range(Hi):
+        for xj in range(Wi):
+            patch = padded_image[xi:xi+Hk, xj:xj+Wk]
+            out[xi, xj] = np.sum(patch*kernel)
     ### END YOUR CODE
-
     return out
 
 def cross_correlation(f, g):
@@ -105,7 +123,7 @@ def cross_correlation(f, g):
 
     out = None
     ### YOUR CODE HERE
-    pass
+    out = conv_fast(f, np.flip(g, axis=(0, 1)))
     ### END YOUR CODE
 
     return out
@@ -127,7 +145,8 @@ def zero_mean_cross_correlation(f, g):
 
     out = None
     ### YOUR CODE HERE
-    pass
+    g = g - g.mean()
+    out = cross_correlation(f, g)
     ### END YOUR CODE
 
     return out
@@ -150,8 +169,19 @@ def normalized_cross_correlation(f, g):
     """
 
     out = None
-    ### YOUR CODE HERE
-    pass
-    ### END YOUR CODE
+    Hk, Wk = g.shape
+    Hi, Wi = f.shape
+    a = Hk // 2
+    b = Wk // 2
+    padded_image = zero_pad(f, a, b)
+    out = np.zeros_like(f)
 
+    ### YOUR CODE HERE
+    for xi in range(Hi):
+        for xj in range(Wi):
+            patch = padded_image[xi:xi+Hk, xj:xj+Wk]
+            patch = (patch-patch.mean()) / patch.std()
+
+            g = (g-g.mean()) / g.std()
+            out[xi, xj] = np.sum(patch*g)
     return out
