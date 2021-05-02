@@ -7,10 +7,13 @@ Last modified: 10/18/2017
 Python Version: 3.5+
 """
 
+from time import time
 import numpy as np
+from utils import im2col_2d
 
-def conv(image, kernel):
-    """ An implementation of convolution filter.
+def original_conv(image, kernel):
+    """ Note: the implementation specified in the homework.
+    An implementation of convolution filter.
 
     This function uses element-wise multiplication and np.sum()
     to efficiently compute weighted sum of neighborhood at each
@@ -25,7 +28,7 @@ def conv(image, kernel):
     """
     Hi, Wi = image.shape
     Hk, Wk = kernel.shape
-    out = np.zeros((Hi, Wi))
+    out = np.zeros((Hi, Wi), dtype=np.float64)
 
     # For this assignment, we will use edge values to pad the images.
     # Zero padding will make derivatives at the image boundary very big,
@@ -36,10 +39,23 @@ def conv(image, kernel):
     padded = np.pad(image, pad_width, mode='edge')
 
     ### YOUR CODE HERE
-    pass
+    for xi in range(Hi):
+        for xj in range(Wi):
+            patch = padded[xi:xi+Hk, xj:xj+Wk]
+            out[xi, xj] = np.sum(patch*kernel)
     ### END YOUR CODE
 
     return out
+
+def conv(image, kernel):
+    """The implementation for fast convolution to accelerate speed for hyper parameter tuning.
+    """
+    Hk, Wk = kernel.shape
+    padded = np.pad(image, [(Hk//2, Hk//2), (Wk//2, Wk//2)], mode='edge')
+    sliding_window = im2col_2d(padded, kernel_size=kernel.shape, stride=(1, 1))
+    output = sliding_window @ kernel.ravel()
+    return output.reshape(image.shape)
+# conv = original_conv
 
 def gaussian_kernel(size, sigma):
     """ Implementation of Gaussian Kernel.
@@ -61,7 +77,9 @@ def gaussian_kernel(size, sigma):
     kernel = np.zeros((size, size))
 
     ### YOUR CODE HERE
-    pass
+    xx,yy = np.meshgrid(np.arange(size), np.arange(size))
+    k = size // 2
+    kernel =  1 / (2*np.pi*sigma**2) * np.exp(-((xx-k)**2+(yy-k)**2) / (2*sigma**2)) 
     ### END YOUR CODE
 
     return kernel
@@ -81,7 +99,9 @@ def partial_x(img):
     out = None
 
     ### YOUR CODE HERE
-    pass
+    kernel = np.array([-0.5, 0, 0.5]).reshape(1, 3)
+    out = conv(img, kernel)
+
     ### END YOUR CODE
 
     return out
@@ -101,7 +121,8 @@ def partial_y(img):
     out = None
 
     ### YOUR CODE HERE
-    pass
+    kernel = np.array([-0.5, 0, 0.5]).reshape(3, 1)
+    out = conv(img, kernel)
     ### END YOUR CODE
 
     return out
@@ -125,9 +146,11 @@ def gradient(img):
     theta = np.zeros(img.shape)
 
     ### YOUR CODE HERE
-    pass
+    gx = partial_x(img)
+    gy = partial_y(img)
+    G = np.sqrt(gx**2+gy**2)
+    theta = (180*np.arctan2(gy, gx)/np.pi+180) % 360
     ### END YOUR CODE
-
     return G, theta
 
 
@@ -152,9 +175,22 @@ def non_maximum_suppression(G, theta):
 
     #print(G)
     ### BEGIN YOUR CODE
-    pass
-    ### END YOUR CODE
+    theta = theta % 360 # NOTE: to prevent angle floor to 360, which will not processed
+    pad_G = np.pad(G, 1)
 
+    index1 = ((theta == 135) | (theta == 315)) & (G >= pad_G[:-2, 2:]) & (G >= pad_G[2:, :-2])
+    out[index1] = G[index1]
+
+    index2 = ((theta == 0) | (theta == 180)) & (G >= pad_G[1:-1, :-2]) & (G >= pad_G[1:-1, 2:])
+    out[index2] = G[index2]
+
+    index3 = ((theta == 90) | (theta == 270)) & (G >= pad_G[2:, 1:-1]) & (G >= pad_G[:-2, 1:-1])
+    out[index3] = G[index3]
+
+    index4 = ((theta == 45) | (theta == 225)) & (G >= pad_G[2:, 2:]) & (G >= pad_G[:-2, :-2])
+    out[index4] = G[index4]
+    
+    ### END YOUR CODE
     return out
 
 def double_thresholding(img, high, low):
@@ -177,7 +213,8 @@ def double_thresholding(img, high, low):
     weak_edges = np.zeros(img.shape, dtype=np.bool)
 
     ### YOUR CODE HERE
-    pass
+    strong_edges =  img > high
+    weak_edges = (img <= high) & (img > low)
     ### END YOUR CODE
 
     return strong_edges, weak_edges
@@ -230,18 +267,26 @@ def link_edges(strong_edges, weak_edges):
     indices = np.stack(np.nonzero(strong_edges)).T
     edges = np.zeros((H, W), dtype=np.bool)
 
-    # Make new instances of arguments to leave the original
-    # references intact
-    weak_edges = np.copy(weak_edges)
-    edges = np.copy(strong_edges)
-
     ### YOUR CODE HERE
-    pass
+    # TODO: how to speed up this implementation
+    edges = np.copy(strong_edges)
+    i = 0
+    while i < indices.shape[0]: # (N, 2)
+        x, y = indices[i] 
+        neighbors = get_neighbors(x, y, H, W)
+        for x2, y2 in neighbors:
+            if weak_edges[x2, y2] and not edges[x2, y2]:
+                edges[x2, y2] = True
+                indices = np.concatenate((indices, [[x2, y2]]))
+        i += 1
+    
+    # Speed up version
+
     ### END YOUR CODE
 
     return edges
 
-def canny(img, kernel_size=5, sigma=1.4, high=20, low=15):
+def canny(img, kernel_size=5, sigma=1.4, high=20, low=15, verbose=False):
     """ Implement canny edge detector by calling functions above.
 
     Args:
@@ -250,11 +295,45 @@ def canny(img, kernel_size=5, sigma=1.4, high=20, low=15):
         sigma: float for calculating kernel.
         high: high threshold for strong edges.
         low: low threashold for weak edges.
+        verbose: if print time cost for each step
     Returns:
         edge: numpy array of shape(H, W).
     """
     ### YOUR CODE HERE
-    pass
+    kernel = gaussian_kernel(kernel_size, sigma)
+
+    start_time = time()
+    smoothed = conv(img, kernel)
+    end_time = time()
+    if verbose:
+        print('smooth conv time %.2fs' % (end_time - start_time))
+
+    start_time = time()
+    G, theta = gradient(smoothed)
+    end_time = time()
+    if verbose:
+        print('gradient time %.2fs' % (end_time - start_time))
+    
+    # visualization to set double threshold
+    # from matplotlib import pyplot as plt
+    # plt.figure()
+    # print(G)
+    # plt.hist(G.ravel(), bins=10)
+    # plt.show()
+
+    start_time = time()
+    nms = non_maximum_suppression(G, theta)
+    end_time = time()
+    if verbose:
+        print('nms time %.2fs' % (end_time - start_time))
+
+    strong_edges, weak_edges = double_thresholding(nms, high, low)
+    start_time = time()
+    edge = link_edges(strong_edges, weak_edges)
+    end_time = time()
+    if verbose:
+        print('link edge time %.2fs' % (end_time - start_time))
+        print('-'*40)
     ### END YOUR CODE
 
     return edge
@@ -294,7 +373,12 @@ def hough_transform(img):
     # Find rho corresponding to values in thetas
     # and increment the accumulator in the corresponding coordiate.
     ### YOUR CODE HERE
-    pass
+    for i in range(xs.shape[0]):
+        x, y = xs[i], ys[i]
+        for j in range(num_thetas):
+            rho = x * cos_t[j] + y * sin_t[j]
+            accumulator[int(rho)+diag_len, j] += 1
+
     ### END YOUR CODE
 
     return accumulator, rhos, thetas
