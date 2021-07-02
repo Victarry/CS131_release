@@ -7,10 +7,12 @@ Last modified: 10/9/2020
 Python Version: 3.5+
 """
 
+from matplotlib.pyplot import axis, imread
 import numpy as np
 import random
 from scipy.spatial.distance import squareform, pdist, cdist
 from skimage.util import img_as_float
+from skimage.color import rgb2lab
 
 ### Clustering Methods
 def kmeans(features, k, num_iters=100):
@@ -45,7 +47,22 @@ def kmeans(features, k, num_iters=100):
 
     for n in range(num_iters):
         ### YOUR CODE HERE
-        pass
+        # update cluster assignments
+        for i in range(N):
+            min_distance = float('inf')
+            for j in range(k):
+                cur_distance = np.linalg.norm(centers[j]-features[i]) 
+                if cur_distance < min_distance:
+                    min_distance = cur_distance
+                    min_id = j
+            assignments[i] = min_id
+        # update center
+        num_points = np.zeros(k) # point number in each cluster
+        centers[:] = 0
+        for i in range(N):
+            centers[assignments[i]] += features[i]
+            num_points[assignments[i]] += 1
+        centers = centers / num_points[:, None]
         ### END YOUR CODE
 
     return assignments
@@ -81,7 +98,10 @@ def kmeans_fast(features, k, num_iters=100):
 
     for n in range(num_iters):
         ### YOUR CODE HERE
-        pass
+        dists = cdist(features, centers) # (N, k)
+        assignments = np.argmin(dists, axis=-1) # (N)
+        for i in range(k):
+            centers[i] = np.mean(features[assignments==i], axis=0)
         ### END YOUR CODE
 
     return assignments
@@ -136,7 +156,22 @@ def hierarchical_clustering(features, k):
 
     while n_clusters > k:
         ### YOUR CODE HERE
-        pass
+        # recompute center
+        for i in range(n_clusters):
+            centers[i] = np.mean(features[assignments == i], axis=0)
+        # compute cluster to be merged
+        dists = squareform(pdist(centers)) # (n_clusters, n_clusters)
+        dists = dists + (dists.max()+1)*np.eye(n_clusters)
+        x, y = np.unravel_index(np.argmin(dists), (n_clusters, n_clusters))
+        l = min(x, y)
+        r = max(x, y)
+        # update assignment
+        assignments[assignments == r] = l
+        for i in range(r, n_clusters-1):
+            assignments[assignments == i+1] = i
+
+        n_clusters -= 1
+        centers = centers[:-1]
         ### END YOUR CODE
 
     return assignments
@@ -157,7 +192,7 @@ def color_features(img):
     features = np.zeros((H*W, C))
 
     ### YOUR CODE HERE
-    pass
+    features = img.copy().reshape(H*W, C)
     ### END YOUR CODE
 
     return features
@@ -186,7 +221,9 @@ def color_position_features(img):
     features = np.zeros((H*W, C+2))
 
     ### YOUR CODE HERE
-    pass
+    xx, yy = np.meshgrid(np.arange(W), np.arange(H))
+    features = np.dstack([color, xx[:, :, None], yy[:, :, None]]).reshape(H*W, C+2)
+    features = (features - np.mean(features, axis=0, keepdims=True)) / np.std(features, axis=0, keepdims=True)
     ### END YOUR CODE
 
     return features
@@ -202,7 +239,13 @@ def my_features(img):
     """
     features = None
     ### YOUR CODE HERE
-    pass
+    H, W, C = img.shape
+    color = rgb2lab(img_as_float(img))
+    features = np.zeros((H*W, C+2))
+
+    xx, yy = np.meshgrid(np.arange(W), np.arange(H))
+    features = np.dstack([color, xx[:, :, None], yy[:, :, None]]).reshape(H*W, C+2)
+    features = (features - np.mean(features, axis=0, keepdims=True)) / np.std(features, axis=0, keepdims=True)
     ### END YOUR CODE
     return features
 
@@ -226,7 +269,7 @@ def compute_accuracy(mask_gt, mask):
 
     accuracy = None
     ### YOUR CODE HERE
-    pass
+    accuracy = np.mean(mask_gt == mask)
     ### END YOUR CODE
 
     return accuracy
