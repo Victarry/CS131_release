@@ -30,7 +30,7 @@ def energy_function(image):
     gray_image = color.rgb2gray(image)
 
     ### YOUR CODE HERE
-    pass
+    out = np.sum(np.abs(np.gradient(gray_image)), axis=0)
     ### END YOUR CODE
 
     return out
@@ -80,7 +80,19 @@ def compute_cost(image, energy, axis=1):
     paths[0] = 0  # we don't care about the first row of paths
 
     ### YOUR CODE HERE
-    pass
+    left_cost = np.zeros(W)
+    left_cost[0] = float('inf')
+    middel_cost = np.zeros(W)
+    right_cost = np.zeros(W)
+    right_cost[-1] = float('inf')
+    for i in range(1, H):
+        left_cost[1:] = cost[i-1, :-1]
+        middel_cost = cost[i-1]
+        right_cost[:-1] = cost[i-1, 1:]
+        stacked_cost = np.stack([left_cost, middel_cost, right_cost], axis=0) # (W, 3)
+
+        cost[i] = np.min(stacked_cost, axis=0) + energy[i]
+        paths[i] = np.argmin(stacked_cost, axis=0)-1
     ### END YOUR CODE
 
     if axis == 0:
@@ -118,7 +130,8 @@ def backtrack_seam(paths, end):
     seam[H-1] = end
 
     ### YOUR CODE HERE
-    pass
+    for i in range(H-2, -1, -1):
+        seam[i] = seam[i+1] + paths[i+1, seam[i+1]]
     ### END YOUR CODE
 
     # Check that seam only contains values in [0, W-1]
@@ -148,7 +161,9 @@ def remove_seam(image, seam):
     out = None
     H, W, C = image.shape
     ### YOUR CODE HERE
-    pass
+    out = np.zeros((H, W-1, C), dtype=image.dtype)
+    for i in range(H):
+        out[i] = np.concatenate([image[i, :seam[i]], image[i, seam[i]+1:]], axis=0)
     ### END YOUR CODE
     out = np.squeeze(out)  # remove last dimension if C == 1
 
@@ -196,7 +211,11 @@ def reduce(image, size, axis=1, efunc=energy_function, cfunc=compute_cost, bfunc
     assert size > 0, "Size must be greater than zero"
 
     ### YOUR CODE HERE
-    pass
+    for i in range(W-size):
+        energy = efunc(out)
+        cost, paths = cfunc(out, energy)
+        seam = bfunc(paths, np.argmin(cost[-1]))
+        out = rfunc(out, seam)
     ### END YOUR CODE
 
     assert out.shape[1] == size, "Output doesn't have the right shape"
@@ -223,7 +242,8 @@ def duplicate_seam(image, seam):
     H, W, C = image.shape
     out = np.zeros((H, W + 1, C))
     ### YOUR CODE HERE
-    pass
+    for i in range(H):
+        out[i] = np.concatenate([image[i, :seam[i]+1], image[i, seam[i]:]], axis=0)
     ### END YOUR CODE
 
     return out
@@ -264,7 +284,11 @@ def enlarge_naive(image, size, axis=1, efunc=energy_function, cfunc=compute_cost
     assert size > W, "size must be greather than %d" % W
 
     ### YOUR CODE HERE
-    pass
+    for i in range(size-W):
+        energy = efunc(out)
+        cost, paths = cfunc(out, energy)
+        seam = bfunc(paths, np.argmin(cost[-1]))
+        out = dfunc(out, seam)
     ### END YOUR CODE
 
     if axis == 0:
@@ -391,7 +415,17 @@ def enlarge(image, size, axis=1, efunc=energy_function, cfunc=compute_cost, dfun
     assert size <= 2 * W, "size must be smaller than %d" % (2 * W)
 
     ### YOUR CODE HERE
-    pass
+    energy = efunc(out)
+    cost, paths = cfunc(out, energy)
+    seams = find_seams(out, size-W, efunc=efunc, cfunc=cfunc, bfunc=bfunc, rfunc=rfunc) # (H, W)
+    # add seam from right to left, so how to find right-most seam
+    cur_index = W-1
+    while cur_index >= 0:
+        seam_id = seams[0, cur_index] 
+        if seam_id != 0:
+            seam = np.where(seams == seam_id)[1]
+            out = dfunc(out, seam)
+        cur_index -= 1
     ### END YOUR CODE
 
     if axis == 0:
@@ -433,7 +467,32 @@ def compute_forward_cost(image, energy):
     paths[0] = 0  # we don't care about the first row of paths
 
     ### YOUR CODE HERE
-    pass
+    # refer to this blog https://avikdas.com/2019/07/29/improved-seam-carving-with-forward-energy.html
+    # but energy of each location should also be included
+    for i in range(1, H):
+        C_l = np.zeros(W)
+        C_u = np.zeros(W)
+        C_r = np.zeros(W)
+        C_u[1:-1] = np.abs(image[i, :-2]-image[i, 2:])
+        C_u = C_u + energy[i] + cost[i-1]
+
+
+        C_l[1:-1] = np.abs(image[i, :-2]-image[i, 2:]) + np.abs(image[i, :-2] - image[i-1, 1:-1])
+        C_l[-1] = np.abs(image[i, -2] - image[i-1, -1])
+        C_l[1:] = C_l[1:] + energy[i, 1:] + cost[i-1, :-1]
+        C_l[0] = float('inf')
+
+
+        C_r[1:-1] = np.abs(image[i, :-2]-image[i, 2:]) + np.abs(image[i, 1:-1] - image[i-1, 2:])
+        C_r[0] = np.abs(image[i, 0] - image[i-1, 1])
+        C_r[:-1] = C_r[:-1] + energy[i, :-1] + cost[i-1, 1:]
+        C_r[-1] = float('inf')
+
+        stacked_cost = np.stack((C_l, C_u, C_r), axis=0)
+        cost[i] = np.min(stacked_cost, axis=0)
+        paths[i] = np.argmin(stacked_cost, axis=0) - 1
+
+
     ### END YOUR CODE
 
     # Check that paths only contains -1, 0 or 1
@@ -472,9 +531,11 @@ def reduce_fast(image, size, axis=1, efunc=energy_function, cfunc=compute_cost):
     assert size > 0, "Size must be greater than zero"
 
     ### YOUR CODE HERE
-    # Delete that line, just here for the autograder to pass setup checks
-    out = reduce(image, size, 1, efunc, cfunc)
-    pass
+    for i in range(W-size):
+        energy = efunc(out)
+        cost, paths = cfunc(out, energy)
+        seam = backtrack_seam(paths, np.argmin(cost[-1]))
+        out = remove_seam(out, seam)
     ### END YOUR CODE
 
     assert out.shape[1] == size, "Output doesn't have the right shape"
@@ -503,7 +564,24 @@ def remove_object(image, mask):
     out = np.copy(image)
 
     ### YOUR CODE HERE
-    pass
+    def energy_mask(image):
+        energy = energy_function(image)
+        energy[mask] = -100
+        return energy
+    
+    def mask_remove_seam(image, seam):
+        out = remove_seam(image, seam) 
+        nonlocal mask
+        mask = remove_seam(mask, seam)
+        return out
+
+    from scipy import ndimage
+    mask_box  = ndimage.find_objects(mask)[0]
+    mask_h = mask_box[0].stop - mask_box[0].start + 1
+    mask_w = mask_box[1].stop - mask_box[1].start + 1
+    out = reduce(image, W-mask_w, 1, energy_mask, compute_cost, rfunc=mask_remove_seam)
+
+    out = enlarge(out, W, axis=1)
     ### END YOUR CODE
 
     assert out.shape == image.shape
