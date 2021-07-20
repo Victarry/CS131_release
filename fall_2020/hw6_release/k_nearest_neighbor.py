@@ -1,4 +1,6 @@
+from matplotlib.pyplot import axis
 import numpy as np
+from numpy.core.fromnumeric import argsort
 
 
 def compute_distances(X1, X2):
@@ -26,8 +28,9 @@ def compute_distances(X1, X2):
     # in particular you should not use functions from scipy.
     #
     # HINT: Try to formulate the l2 distance using matrix multiplication
-
-    pass
+    diff = X1[:, None, :] - X2[None, :, :] # (M, N, D)
+    dists = np.sum(diff ** 2, axis=-1)
+    
     # END YOUR CODE
 
     assert dists.shape == (M, N), "dists should have shape (M, N), got %s" % dists.shape
@@ -62,7 +65,10 @@ def predict_labels(dists, y_train, k=1):
     # Hint: Look up the functions numpy.argsort and numpy.bincount
 
     # YOUR CODE HERE
-    pass
+    index = argsort(dists, axis=-1)[:, :k] # (num_test, k)
+    label = y_train[index] # (num_test, k)
+    for i in range(num_test):
+        y_pred[i] = np.argmax(np.bincount(label[i]))
     # END YOUR CODE
 
     return y_pred
@@ -112,7 +118,14 @@ def split_folds(X_train, y_train, num_folds):
 
     # YOUR CODE HERE
     # Hint: You can use the numpy array_split function.
-    pass
+    train_splits = np.array_split(X_train, num_folds) # list: (num_folds) -> 
+    y_splits = np.array_split(y_train, num_folds)
+    for i in range(num_folds):
+        X_trains[i] = np.vstack((*train_splits[:i], *train_splits[i+1:]))
+        y_trains[i] = np.hstack((*y_splits[:i], *y_splits[i+1:]))
+        X_vals[i] = train_splits[i]
+        y_vals[i] = y_splits[i]
+
     # END YOUR CODE
 
     return X_trains, y_trains, X_vals, y_vals
