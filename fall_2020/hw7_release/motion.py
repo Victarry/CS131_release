@@ -7,7 +7,10 @@ Last modified: 12/02/2017
 Python Version: 3.5+
 """
 
+from operator import inv
+from matplotlib.pyplot import axis
 import numpy as np
+from numpy import linalg
 from skimage.transform import pyramid_gaussian
 
 
@@ -46,9 +49,16 @@ def lucas_kanade(img1, img2, keypoints, window_size=5):
         # In order to achieve more accurate results, image brightness at subpixel
         # locations can be computed using bilinear interpolation.
         y, x = int(round(y)), int(round(x))
-
         ### YOUR CODE HERE
-        pass
+        Ix_window = Ix[y-w:y+w+1, x-w:x+w+1].ravel() # (N)
+        Iy_window = Iy[y-w:y+w+1, x-w:x+w+1].ravel() # (N)
+        It_window = It[y-w:y+w+1, x-w:x+w+1].ravel() # (N)
+
+        flow_vector = np.zeros(2)
+        A = np.stack([Iy_window, Ix_window], axis=1) # (N, 2)
+        flow_vector = np.linalg.inv(A.T @ A) @ (-A.T @ It_window)
+
+        flow_vectors.append(flow_vector)
         ### END YOUR CODE
 
     flow_vectors = np.array(flow_vectors)
@@ -92,7 +102,14 @@ def iterative_lucas_kanade(img1, img2, keypoints, window_size=9, num_iters=7, g=
 
         # TODO: Compute inverse of G at point (x1, y1)
         ### YOUR CODE HERE
-        pass
+        window = slice(y1-w, y1+w+1), slice(x1-w, x1+w+1)
+        Ix_window = Ix[window].ravel() # (N)
+        Iy_window = Iy[window].ravel() # (N)
+
+        A = np.stack([Ix_window, Iy_window], axis=1) # (N, 2)
+        G = A.T @ A # (2, 2)
+        G_inv = np.linalg.inv(G) # (2, 2)
+        
         ### END YOUR CODE
 
         # Iteratively update flow vector
@@ -104,7 +121,11 @@ def iterative_lucas_kanade(img1, img2, keypoints, window_size=9, num_iters=7, g=
 
             # TODO: Compute bk and vk = inv(G) x bk
             ### YOUR CODE HERE
-            pass
+            window_k = slice(y2-w, y2+w+1), slice(x2-w,x2+w+1)
+            # when tempo_diff is zero, b_k will be zero, then flow vector will keep same
+            tempo_diff = (img1[window] - img2[window_k]).ravel()
+            b_k = A.T @ tempo_diff
+            vk = G_inv @ b_k
             ### END YOUR CODE
 
             # Update flow vector by vk
@@ -145,7 +166,9 @@ def pyramid_lucas_kanade(
 
     for L in range(level, -1, -1):
         ### YOUR CODE HERE
-        pass
+        d = iterative_lucas_kanade(pyramid1[L], pyramid2[L], keypoints / scale**L, window_size, num_iters, g=g)
+        if L > 0:
+            g = scale*(g+d)
         ### END YOUR CODE
 
     d = g + d
@@ -167,7 +190,9 @@ def compute_error(patch1, patch2):
     assert patch1.shape == patch2.shape, "Different patch shapes"
     error = 0
     ### YOUR CODE HERE
-    pass
+    patch1 = (patch1-np.mean(patch1)) / np.std(patch1)
+    patch2 = (patch2-np.mean(patch2)) / np.std(patch2)
+    error = np.mean(np.square(patch1-patch2))
     ### END YOUR CODE
     return error
 
@@ -258,7 +283,15 @@ def IoU(bbox1, bbox2):
     score = 0
 
     ### YOUR CODE HERE
-    pass
+    x_a = max(x1, x2) # far point in left side
+    x_b = min(x1+w1, x2+w2) # close point in right side
+    area_x = x_b - x_a if x_a < x_b else 0
+
+    y_a = max(y1, y2) # far point in top side
+    y_b = min(y1+h1, y2+h2) # close point in bottom side
+    area_y = y_b - y_a if y_a < y_b else 0
+    area = area_x * area_y
+    score = area / (w1 * h1 + w2 * h2 - area)
     ### END YOUR CODE
 
     return score
