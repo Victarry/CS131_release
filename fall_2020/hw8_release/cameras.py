@@ -20,7 +20,13 @@ def camera_from_world_transform(d: float = 1.0) -> np.ndarray:
     """
     T = np.eye(4)
     # YOUR CODE HERE
-    pass
+    x = 1 / 2**0.5
+    T = np.array([
+        [-x, 0, -x, 0], # w_x in C
+        [0, 1, 0, 0], # w_y in C
+        [x, 0, -x, 0], # w_z in C
+        [0, 0, 1, 0]
+    ]).T
     # END YOUR CODE
     assert T.shape == (4, 4)
     return T
@@ -55,7 +61,8 @@ def apply_transform(T: np.ndarray, points: np.ndarray) -> Tuple[np.ndarray]:
     points_transformed = np.zeros((3, N))
 
     # YOUR CODE HERE
-    pass
+    points_transformed = T @ np.concatenate((points, np.ones((1, N))), axis=0)
+    points_transformed = points_transformed[:3, :]
     # END YOUR CODE
 
     assert points_transformed.shape == (3, N)
